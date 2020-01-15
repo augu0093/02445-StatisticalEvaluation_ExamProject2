@@ -17,7 +17,7 @@ plot(modelDGTolsenP, main="yield ~ location + DGT + olsenP")
 #anova(modelDGTolsenP)
 
 # Combined model: yield ~ location + DGT + olsenP
-modelAll <- lm(yield ~ location + DGT + olsenP)
+modelAll <- lm(yield ~ as.factor(location) + DGT + olsenP)
 summary(modelAll)
 plot(modelAll, main="yield ~ location + DGT + olsenP")
 #anova(modelAll)
