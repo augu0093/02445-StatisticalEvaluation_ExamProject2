@@ -25,13 +25,23 @@ attach(Phosphorous)
 
 # Create standardized data set
 PhosphorousStandard <- Phosphorous
-PhosphorousStandard$DGT <- scale(DGT)
-PhosphorousStandard$olsenP <- scale(olsenP)
+PhosphorousStandard$DGT <- scale(Phosphorous$DGT)
+PhosphorousStandard$olsenP <- scale(Phosphorous$olsenP)
 
 
 # Give short data summary of quartiles and min/max
 summary(Phosphorous)
   
+##########################################
+# First focus: Choosing between olsen P and DGT measurements.
+##########################################
+
+### Plotting data for general overview
+par(mfrow = c(1,1))
+
+# Boxplot
+plot(location,yield, xlab="Field", ylab="Yield (hkg/ha)", main="Boxplot of yield for each field")
+
 # Defining different subsets of the different locations
 loca1 <- Phosphorous[location == "001",]
 loca2 <- Phosphorous[location == "002",]
@@ -44,19 +54,6 @@ loca9 <- Phosphorous[location == "009",]
 loca10 <- Phosphorous[location == "010",]
 # Location 11 is excluded as it only contains two complete observations
 #loca11 <- Phosphorous[location == "011",]
-
-
-
-##########################################
-# First focus: Choosing between olsen P and DGT measurements.
-##########################################
-
-### Plotting data for general overview
-par(mfrow = c(1,1))
-
-# Boxplot
-plot(location,yield, xlab="Field", ylab="Yield (hkg/ha)", main="Boxplot of yield for each field")
-
 # Variance of all locations' yield
 var(loca1["yield"]) # = 7.905626
 var(loca2["yield"]) # = 10.83938
@@ -170,29 +167,7 @@ predict(modelTrainOlsenP, data.frame(y = mean(y)))#, interval = "confidence")
 
 
 
-### The same kind of training is performed in a range of percentages
-perc <- c(0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.96875)
-DGTac <- rep(NA,length(perc))
-olsenPac <- rep(NA,length(perc))
 
-set.seed(101)
-for (i in (1:length(perc))){
-  sample <- sample.int(n = nrow(Phosphorous), size = floor(perc[i]*nrow(Phosphorous)), replace = F)
-  PhosphorousTrain <- Phosphorous[sample, ]
-  PhosphorousTest  <- Phosphorous[-sample, ]
-  modelTrainDGT <- lm(yield ~ DGT, data = PhosphorousTrain)
-  modelTrainolsenP <- lm(yield ~ olsenP, data = PhosphorousTrain)
-  # Append MSE DGT
-  predictionsDGT <- predict(modelTrainDGT, PhosphorousTest)
-  DGTac[i] <- mean((PhosphorousTest$yield - predictionsDGT)^2)
-  # Append MSE olsenP
-  predictionsOlsenP <- predict(modelTrainOlsenP, PhosphorousTest)
-  olsenPac[i] <- mean((PhosphorousTest$yield - predictionsOlsenP)^2)
-}
-
-# Plotting accuracies found for predictions
-par(mfrow = c(1,1))
-xyplot(DGTac + olsenPac ~ perc, xlab="Percent training data", ylab="Accuracy of DGT and olsenP", auto.key=TRUE)
 
 
 
@@ -201,8 +176,12 @@ pred.errorsDGT <- rep(NA, 32)
 pred.errorsOlsenP <- rep(NA, 32)
 
 for (i in 1:32) {
-  train_data <- Phosphorous[-i, ] 
-  test_data <- Phosphorous[i, ]
+  # train_data <- Phosphorous[-i, ] 
+  # test_data <- Phosphorous[i, ]
+  # Standardized data
+  train_data <- PhosphorousStandard[-i, ] 
+  test_data <- PhosphorousStandard[i, ]
+  
   
   # Train model, make prediction, calculate MSE
   mDGT <- lm(yield ~ DGT, data = train_data)
@@ -214,41 +193,77 @@ for (i in 1:32) {
   pred.errorsOlsenP[i] <- test_data$yield - predictionOlsenP
 }
 # Define MSE
-mseDGT <- mean(pred.errorsDGT^2) # = 114.3345
-mseOlsenP <- mean(pred.errorsOlsenP^2) # = 127.8291
+mean(pred.errorsDGT^2) # = 114.3345
+mean(pred.errorsOlsenP^2) # = 127.8291
 
 
 
 
 
-###  Michaelies-Menten model
+###  Non-linear regression model: Michaelies-Menten model
 #nls()
-#phos.model <- nls(yield ~ alfa * DGT/(beta + DGT) , data = Phosphorous, start = list(alfa = 90 , beta = 1)
+#phos.model <- nls((yield ~ alfa * DGT/(beta + DGT)), data = Phosphorous, start = list(alfa = 90 , beta = 1)
 
-model.drmDGT <- drm(yield ~ DGT, data = Phosphorous, fct = MM.2())
-summary(model.drmDGT)
+# Model DGT
+modelDGT.nls <- nls(yield ~ a * DGT/(b+DGT), data = Phosphorous, start = list(b = max(Phosphorous$yield)/2, a = max(Phosphorous$yield)))
+summary(modelDGT.nls)
+
+# Model OlsenP
+modelOlsenP.nls <- nls(yield ~ a * olsenP/(b+olsenP), data = Phosphorous, start = list(b = max(Phosphorous$yield)/2, a = max(Phosphorous$yield)))
+summary(modelOlsenP.nls)
+
+#predict(modelDGT.nls, newdata = c(60))
+
+# par(mfrow = c(1,1))
+# model.drmDGT <- drm(yield ~ DGT, data = Phosphorous, fct = MM.2())
+# summary(model.drmDGT)
+# plot(model.drmDGT)
+
 
 # Leave-one-out CV for testing accuray of non-linear model
 pred.errorsDGTMM <- rep(NA, 32)
+pred.errorsOlsenPMM <- rep(NA, 32)
 for (i in 1:32) {
-  train_data <- Phosphorous[-i, ] 
+  train_data <- Phosphorous[-i, ]
   test_data <- Phosphorous[i, ]
+  # Standardized data
+  # train_data <- PhosphorousStandard[-i, ] 
+  # test_data <- PhosphorousStandard[i, ]
   
   # Train model, make prediction, calculate MSE
-  mDGTMM <- drm(yield ~ DGT, data = train_data, fct = MM.2())
-  predictionDGTMM <- predict(mDGTMM, test_data)
+  #mDGTMM <- drm(yield ~ DGT, data = train_data, fct = MM.2())
+  modelDGT.nls <- nls(yield ~ a * DGT/(b+DGT), data = train_data, start = list(b = max(train_data$yield)/2, a = max(train_data$yield)))
+  dfDGT <- data.frame(
+    a <- c(coef(modelDGT.nls)[2]),
+    b <- c(coef(modelDGT.nls)[1]),
+    DGT <- c(test_data$DGT)
+  )
+  predictionDGTMM <- predict(modelDGT.nls, newdata = dfDGT)
   pred.errorsDGTMM[i] <- test_data$yield - predictionDGTMM
   
+  modelOlsenP.nls <- nls(yield ~ a * olsenP/(b+DGT), data = train_data, start = list(b = max(train_data$yield)/2, a = max(train_data$yield)))
+  dfOlsenP <- data.frame(
+    a <- c(coef(modelOlsenP.nls)[2]),
+    b <- c(coef(modelOlsenP.nls)[1]),
+    olsenP <- c(test_data$olsenP)
+  )
+  predictionOlsenPMM <- predict(modelOlsenP.nls, newdata = dfOlsenP)
+  pred.errorsOlsenPMM[i] <- test_data$yield - predictionOlsenPMM
+  
 }
-# Define MSE
-mseDGTMM <- mean(pred.errorsDGTMM^2) # = 114.3345
-print(mseDGTMM)
+# Define MSE from CV
+mean(pred.errorsDGTMM^2) # = 123.5609
+mean(pred.errorsOlsenPMM^2) # = 253.0265
 
 
 
-DGTl <- data.frame(DGT = seq(0, max(Phosphorous$DGT), length.out = 32))
-DGTl$yield <- predict(model.drmDGT, newdata = DGTl)
-# Plotting this
+
+
+# Plotting non-linear DGT
+modelDGT.nls <- nls(yield ~ a * DGT/(b+DGT), data = Phosphorous, start = list(b = max(Phosphorous$yield)/2, a = max(Phosphorous$yield)))
+DGTl <- data.frame(DGT = seq(0, max(Phosphorous$DGT), length.out = 100))
+DGTl$yield <- predict(modelDGT.nls, newdata = DGTl)
+
 ggplot(Phosphorous, aes(x = DGT, y = yield)) +
   theme_bw() +
   xlab("DGT [mug/L]") +
@@ -258,9 +273,18 @@ ggplot(Phosphorous, aes(x = DGT, y = yield)) +
   geom_line(data = DGTl, aes(x = DGT, y = yield), colour = "red")
 
 
+# Plotting non-linear OlsenP
+modelOlsenP.nls <- nls(yield ~ a * olsenP/(b+olsenP), data = Phosphorous, start = list(b = max(Phosphorous$yield)/2, a = max(Phosphorous$yield)))
+olsenPl <- data.frame(olsenP = seq(0, max(Phosphorous$olsenP), length.out = 100))
+olsenPl$yield <- predict(modelOlsenP.nls, newdata = olsenPl)
 
-
-
+ggplot(Phosphorous, aes(x = olsenP, y = yield)) +
+  theme_bw() +
+  xlab("Olsen-P [mg/100g]") +
+  ylab("Yield [100kg]") +
+  ggtitle("Michaelis-Menten kinetics") +
+  geom_point(alpha = 0.5) +
+  geom_line(data = olsenPl, aes(x = olsenP, y = yield), colour = "red")
 
 
 
@@ -268,13 +292,29 @@ ggplot(Phosphorous, aes(x = DGT, y = yield)) +
 # Second focus: Does the amount of bioavailable phosphorous influence the harvest yield?.
 ##########################################
 
+par(mfrow=c(2,2))
+# Combined model: yield ~ location + DGT + olsenP
+modelAll <- lm(yield ~ as.factor(location) + DGT + olsenP)
+summary(modelAll)
+plot(modelAll, main="yield ~ location + DGT + olsenP")
+anova(modelAll)
+
+modelAll <- lm(yield ~ as.numeric(location) + DGT + olsenP)
+summary(modelAll)
 
 
 
+modelDGT <- lm(yield ~ DGT)
+summary(modelDGT)
 
-
-
-
+pValueDGT <- rep(NA, 32)
+for (i in 1:32) {
+  train_data <- Phosphorous[-i, ]
+  modelDGTL <- lm(yield ~ DGT, data = train_data)
+  pValueDGT[i] <- summary(modelDGTL)$coefficients[2,4]
+}
+print(pValueDGT)
+mean(pValueDGT)
 
 
 
