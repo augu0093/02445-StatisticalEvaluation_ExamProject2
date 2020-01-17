@@ -4,7 +4,14 @@ library(drc)
 library(lattice)
 library(ggplot2)
 
-# Set working directory
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(broom)
+
+rm(list=ls())
+
+x# Set working directory
 setwd("C:/Users/August/Dropbox/3semester/Projekt_i_statistisk_evaluering/Statistical_Evaluation_Project2")
 
 
@@ -85,20 +92,7 @@ cor(Phosphorous[c("yield","DGT","olsenP")]) #Correlation matrix
 
 
 
-### Making linear models for differentiation between measurement methods and prediction
-par(mfrow = c(2,2))
 
-# Model: yield ~ DGT
-modelDGT <- lm(yield ~ DGT)
-summary(modelDGT)
-plot(modelDGT, main="yield ~ DGT")
-anova(modelDGT)
-
-# Model: yield ~ olsenP
-modelOlsenP <- lm(yield ~ olsenP)
-summary(modelOlsenP)
-plot(modelOlsenP, main="yield ~ olsenP")
-anova(modelOlsenP)
 
 # Combined model of DGT and olsenP: yield ~ DGT + olsenP
 modelDGTolsenP <- lm(yield ~ DGT + olsenP)
@@ -292,16 +286,77 @@ ggplot(Phosphorous, aes(x = olsenP, y = yield)) +
 # Second focus: Does the amount of bioavailable phosphorous influence the harvest yield?.
 ##########################################
 
+# Significance of DGT, olsenP and DGT + olsenP
+
+### Making linear models for differentiation between measurement methods and prediction
+par(mfrow = c(2,2))
+
+# Model: yield ~ DGT
+modelDGT <- lm(yield ~ DGT)
+summary(modelDGT) # p-value = 0.0408 * 
+plot(modelDGT, main="yield ~ DGT")
+anova(modelDGT)
+
+# Model: yield ~ olsenP
+modelOlsenP <- lm(yield ~ olsenP)
+summary(modelOlsenP) # p-value = 0.175 
+plot(modelOlsenP, main="yield ~ olsenP")
+anova(modelOlsenP)
+Response: yield
+
+# Combined model of DGT and olsenP: yield ~ DGT + olsenP
+modelDGTolsenP <- lm(yield ~ DGT + olsenP)
+summary(modelDGTolsenP) # p-valueDGT = 0.0946, p-valueOlsenP = 0.4648
+plot(modelDGTolsenP, main="yield ~ DGT + olsenP")
+anova(modelDGTolsenP)
+#           Df  Sum Sq Mean Sq F value  Pr(>F)  
+# DGT        1  490.26  490.26  4.4991 0.04258 *
+# olsenP     1   59.81   59.81  0.5488 0.46475  
+# Residuals 29 3160.06  108.97                  
+# ---
+#   Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+# Combined model of DGT and olsenP: yield ~ DGT * olsenP
+modelDGTolsenPm <- lm(yield ~ DGT * olsenP)
+summary(modelDGTolsenPm)
+# Coefficients:
+#               Estimate Std. Error t value Pr(>|t|)    
+#   (Intercept) 93.39543    8.56600  10.903 1.38e-11 ***
+#   DGT         -0.27738    0.13499  -2.055  0.04933 *  
+#   olsenP      -7.57720    2.31088  -3.279  0.00279 ** 
+#   DGT:olsenP   0.07568    0.02179   3.472  0.00169 ** 
+#   ---
+#   Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+# 
+# Residual standard error: 8.882 on 28 degrees of freedom
+# Multiple R-squared:  0.4046,	Adjusted R-squared:  0.3408 
+# F-statistic: 6.343 on 3 and 28 DF,  p-value: 0.00203
+plot(modelDGTolsenP, main="yield ~ DGT * olsenP")
+anova(modelDGTolsenPm)
+# Response: yield
+#             Df  Sum Sq Mean Sq F value   Pr(>F)   
+# DGT         1  490.26  490.26  6.2145 0.018856 * 
+# olsenP      1   59.81   59.81  0.7581 0.391330   
+# DGT:olsenP  1  951.16  951.16 12.0569 0.001694 **
+# Residuals  28 2208.90   78.89                    
+# ---
+#   Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+
+
 par(mfrow=c(2,2))
 # Combined model: yield ~ location + DGT + olsenP
-modelAll <- lm(yield ~ as.factor(location) + DGT + olsenP)
+modelAll <- lm(yield ~ DGT + olsenP + as.factor(location))
 summary(modelAll)
+alias(modelAll)
 plot(modelAll, main="yield ~ location + DGT + olsenP")
 anova(modelAll)
 
-modelAll <- lm(yield ~ as.numeric(location) + DGT + olsenP)
+#modelAll <- lm(yield ~ as.numeric(location) + DGT + olsenP)
 summary(modelAll)
 
+
+ancova(modelAll)
 
 
 modelDGT <- lm(yield ~ DGT)
@@ -315,6 +370,110 @@ for (i in 1:32) {
 }
 print(pValueDGT)
 mean(pValueDGT)
+
+
+
+### Permutation DGT, olsenP and the combined models
+par(mfrow=c(1,1))
+DGTmodel_perm <- rep(NA, 10000)
+
+for (i in 1:10000) {
+  DGT_perm <- DGT[sample(32)] # permute DGT's
+  L <- lm(yield ~ DGT_perm)
+  DGTmodel_perm[i] <- coef(L)[2]
+}
+
+hist(DGTmodel_perm, xlab="", main="Historgram: Slope of lm(yield ~ DGT)")
+
+DGT_obs <- coef(lm(yield ~ DGT))[2]
+DGT_obs
+quantile(DGTmodel_perm, c(0.025, 0.975)) ## see if beta_obs is inside interval
+
+## p value
+#
+p0 <- sum(DGTmodel_perm < DGT_obs) / 10000 ## get position in distribution
+{
+  if (p0 > 0.5) 
+    p <- 2*(1-p0)
+  else p <- 2*p0
+}
+p # p value
+
+
+
+
+
+### Permutation
+olsenPmodel_perm <- rep(NA, 10000)
+
+for (i in 1:10000) {
+  olsenP_perm <- olsenP[sample(32)] # permute x's
+  L <- lm(yield ~ olsenP_perm)
+  olsenPmodel_perm[i] <- coef(L)[2]
+}
+
+hist(olsenPmodel_perm)
+
+olsenP_obs <- coef(lm(yield ~ olsenP))[2]
+olsenP_obs
+quantile(olsenPmodel_perm, c(0.025, 0.975)) ## see if beta_obs is inside interval
+
+## p value
+#
+p0 <- sum(olsenPmodel_perm < olsenP_obs) / 10000 ## get position in distribution
+{
+  if (p0 > 0.5) p <- 2*(1-p0)
+  else p <- 2*p0
+}
+p # p value
+
+
+
+
+
+
+
+
+
+
+### Non-linear model p value evaluation
+
+# NL-Model DGT
+modelDGT.nls <- nls(yield ~ a * DGT/(b+DGT), data = Phosphorous, start = list(b = max(Phosphorous$yield)/2, a = max(Phosphorous$yield)))
+summary(modelDGT.nls)
+
+# Model OlsenP
+modelOlsenP.nls <- nls(yield ~ a * olsenP/(b+olsenP), data = Phosphorous, start = list(b = max(Phosphorous$yield)/2, a = max(Phosphorous$yield)))
+summary(modelOlsenP.nls)
+
+
+
+
+# DGTNLmodel_perm <- rep(NA, 10000)
+# 
+# for (i in 1:10000) {
+#   DGTNL_perm <- DGT[sample(32)] # permute DGT's
+#   L <-  nls(yield ~ a * DGT/(b+DGT), data = Phosphorous, start = list(b = max(Phosphorous$yield)/2, a = max(Phosphorous$yield)))
+#   DGTNLmodel_perm[i] <- coef(L)[2]
+# }
+# 
+# hist(DGTNLmodel_perm, xlab="", main="Historgram: Slope of nls(yield ~ DGT)")
+# 
+# DGT_obs <- coef(lm(yield ~ DGT))[2]
+# DGT_obs
+# quantile(DGTmodel_perm, c(0.025, 0.975)) ## see if beta_obs is inside interval
+# 
+# ## p value
+# #
+# p0 <- sum(DGTmodel_perm < DGT_obs) / 10000 ## get position in distribution
+# {
+#   if (p0 > 0.5) 
+#     p <- 2*(1-p0)
+#   else p <- 2*p0
+# }
+# p # p value
+
+
 
 
 
